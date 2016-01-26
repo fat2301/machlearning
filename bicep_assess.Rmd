@@ -1,0 +1,131 @@
+---
+title: "Assessing bicep curls"
+author: "T Gocheco"
+date: "January 25, 2016"
+output: html_document
+---
+
+## Overview
+This study takes in the Weight Lifting Exercise Dataset from http://groupware.les.inf.puc-rio.br/har and generates an analytics model that predicts whether a dumbbell lift has been done correctly or not given different measurements taken from some fitness measurement devices. Data has been downloaded from below links:  
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+In this study, the pml-training.csv data will be split into a training and a test set, and the training set will be used to develop a prediction model, and then tested on the test set. Finally once the results are satisfactory, the model will be used to predict the 20 observations of data from the pml-testing.csv  file, and properly classify whether the bicep curls were done correctly (classe A), or incorrectly as classified by classe B, C, D or E.  
+
+
+## Data Loading.  
+Loading training and testing data from files already downloaded. During loading, NA and blank fields are read as NA.  
+
+```{r cache=TRUE}
+pmltraining <- read.csv("./pml-training.csv", na.strings=c("NA", "#DIV/0!", ""));
+pmltesting<- read.csv("./pml-testing.csv", na.strings=c("NA", "#DIV/0!", ""))
+```
+
+## Exploratory Data Analysis
+
+Exploration done by doing a summary of the dataset. Around 100 variables have mostly NAs as values. See Appendix section, figure 1 for the summary.  
+
+## Data processing and cleaning.  
+
+Initial exploration shows 100 variables with mostly NA values. Following steps taken to identify the variables with NA, and removing them from the training and testing dataset.  
+Also removing the first 7 columns which will not be considered as predictors in this study. These are timestamps and identifiers as to who was the subject, hence isn't really a predictor.  
+
+```{r cache=TRUE}
+library(caret)
+b <-as.data.frame(summary(pmltraining))
+NAlist <- b[grep('*NA*', b$Freq),]$Var2
+NAlist<- sub("^\\s+", "", NAlist)
+
+pmltrainingsubset <- pmltraining[,-which(names(pmltraining) %in% NAlist)]
+pmltestingsubset <- pmltesting[,-which(names(pmltraining) %in% NAlist)]
+pmltrainingsubset <- pmltrainingsubset[,-c(1:7)]
+pmltestingsubset <- pmltestingsubset[,-c(1:7)]
+
+```
+
+
+## Prepare cross-validation data. 
+
+Partition the original training data into 70% training and 30% test. 
+
+```{r cache=TRUE}
+set.seed(507)
+
+inTrain<- createDataPartition(y=pmltrainingsubset$classe, p=0.7, list=FALSE)
+training <- pmltrainingsubset[inTrain, ]; 
+testing <- pmltrainingsubset[-inTrain,]
+```
+
+
+## Random forest Model creation.  
+
+Chosen model is random forest. Though random forest already has some built-in cross-validation given the nature of the algorithm, this study will still do a further test on the test set once a model is created with the training set.  
+
+Train the rainforest model with the training dataset with 53 variables, using default parameters of train.   
+
+```{r cache=TRUE}
+rffit <- train(classe ~ . , data=training, method="rf")
+```
+
+
+## Reviewing the result model.  
+
+
+Viewing the resulting rain forest model:   
+
+```{r}
+rffit$finalModel
+```
+
+The out of sample error is estimated to be only __0.68%__ from the rainforest model. The confusion matrix returned by the best fit model seems to suggest an accuracy of __>98%__ across all 5 classes.  
+
+Now let's view the variable importance plot. The variable importance plot below shows that rollbelt, pitchforearm, and yawbelt variables have the most influence as predictors in our model.   
+
+
+```{r}
+varImpPlot(rffit$finalModel, type=2, pch=19, col=1, cex=.5, main="")
+```
+
+
+## Cross Validation of model using the 30% testing dataset.  
+
+We can now try the model on our test dataset as cross validation to check if the rainforest model performs as well with the testing dataset.  
+
+```{r}
+testprediction <- predict (rffit, testing)
+
+confusionMatrix(testprediction, testing$classe)$table
+```
+
+Confusion matrix for test set vs model prediction shows good prediction across all 5 classes as well.  
+Accuracy of the fit with the test set shows 99.08%, or an error of 0.92%.  
+
+```{r}
+confusionMatrix(testprediction, testing$classe)$overall
+```
+
+## Prediction of final test dataset  
+
+Predicting the 20 test data of the pmltesting data using the rainforest model. 
+
+```{r}
+pmltestingpred <- predict(rffit, pmltestingsubset[,-53])
+print(pmltestingpred)
+```
+
+Inputting the results into the final prediction quiz shows that all 20 exercises were successfully predicted by the model.  
+
+
+## Appendix
+
+### Figure 1: Summary of training dataset showing NA values. 
+
+```{r}
+summary(pmltraining)
+```
+
+### Credits.  
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.  
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3yGi7o6vv  
